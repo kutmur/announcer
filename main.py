@@ -1,5 +1,5 @@
 """
-Main entry point for BTU Announcer Bot
+Main entry point for BTU Announcer Bot (Production Version)
 """
 
 import os
@@ -13,11 +13,6 @@ from handlers.commands import (
     start_command, 
     help_command, 
     update_command, 
-    stats_command,
-    hide_keyboard_command,
-    test_keyboard_command,
-    status_command,
-    permissions_command,
     handle_department_selection,
     error_handler,
     send_announcement_to_user,
@@ -63,11 +58,6 @@ class BTUAnnouncerBot:
             self.application.add_handler(CommandHandler("start", start_command))
             self.application.add_handler(CommandHandler("help", help_command))
             self.application.add_handler(CommandHandler("update", update_command))
-            self.application.add_handler(CommandHandler("stats", stats_command))
-            self.application.add_handler(CommandHandler("hide", hide_keyboard_command))
-            self.application.add_handler(CommandHandler("test", test_keyboard_command))
-            self.application.add_handler(CommandHandler("status", status_command))
-            self.application.add_handler(CommandHandler("permissions", permissions_command))
             
             # Message handler for department selection
             self.application.add_handler(
