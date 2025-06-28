@@ -151,7 +151,7 @@ class AnnouncementScraper:
             
             # Create hash for duplicate detection
             hash_content = f"{announcement['title']}{announcement['link']}"
-            announcement['hash'] = str(hash(hash_content))
+            announcement['hash'] = hashlib.sha256(hash_content.encode('utf-8')).hexdigest()
             
             # Return if we have at least a title
             if announcement['title'] and len(announcement['title']) > 3:
