@@ -1,28 +1,32 @@
 # BTU Announcer Bot - .gitignore
 
-# Environment and secrets
+# Environment variables
 .env
 .env.local
 .env.production
 *.env
 
-# Bot data and logs
+# Database files
+*.json
+*.db
 data/
-logs/
+
+# Log files
 *.log
 bot.log
+logs/
 
 # Announcement tracking (but keep the directory structure)
 announcer/last_sent.json
 
 # Test data
 test_data/
-# Remove this line: *.json
 
-# Python
+# Python cache
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
 *.so
 .Python
 build/
@@ -75,14 +79,12 @@ ENV/
 env.bak/
 venv.bak/
 
-# IDEs
+# IDE / OS specific
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# OS generated files
 .DS_Store
 .DS_Store?
 ._*
