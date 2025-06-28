@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from dotenv import load_dotenv
 
-from handlers.commands import (
+from handlers.commands_production import (
     start_command, 
     help_command, 
     update_command, 
