@@ -116,7 +116,7 @@ Bot BTÜ'nün tüm fakültelerinden 30 bölümü destekler.
 
 
 async def update_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /update command - manually trigger announcement check"""
+    """Handle /update command - show latest announcements from department webpage"""
     user = update.effective_user
     logger.info(f"User {user.username} ({user.id}) requested manual update")
     
@@ -134,7 +134,7 @@ async def update_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
     
     department = user_data['department']
-    await update.message.reply_text(f"🔄 {department} bölümü için duyurular kontrol ediliyor...")
+    await update.message.reply_text(f"🔄 {department} bölümü kontrol ediliyor...")
     
     try:
         # Get department URL and scrape
@@ -143,30 +143,40 @@ async def update_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await update.message.reply_text("❌ Bölüm URL'si bulunamadı.")
             return
         
+        # Scrape top 3 announcements from the webpage
         announcements = scraper.scrape_announcements(url, max_announcements=3)
         
         if not announcements:
+            # No announcements found on the page
             await update.message.reply_text(
-                f"❌ {department} bölümünden duyuru alınamadı. Website erişilebilir olmayabilir."
+                f"ℹ️ {department} bölümü için herhangi bir duyuru bulunamadı."
             )
             return
         
-        # Check for new announcements
-        new_announcements = []
-        for announcement in announcements:
-            if not db.is_announcement_sent(department, announcement['hash']):
-                new_announcements.append(announcement)
+        logger.info(f"Scraped {len(announcements)} announcements for {department}")
         
-        if new_announcements:
-            await update.message.reply_text(f"✅ {len(new_announcements)} yeni duyuru bulundu!")
-            
-            for announcement in new_announcements:
-                await send_announcement_to_user(user.id, announcement, department, context.bot)
+        # Send header message
+        await update.message.reply_text(f"📰 {department} bölümü için son {len(announcements)} duyuru:")
+        
+        # Send all scraped announcements to the user (regardless of database status)
+        for announcement in announcements:
+            try:
+                success = await send_announcement_to_user(user.id, announcement, department, context.bot)
+                if success:
+                    logger.info(f"Successfully sent announcement: {announcement['title'][:50]}...")
+                else:
+                    logger.error(f"Failed to send announcement: {announcement['title'][:50]}...")
+            except Exception as e:
+                logger.error(f"Error sending announcement to user {user.id}: {e}")
+        
+        # After successfully sending announcements, mark them as sent in database
+        # This prevents the automatic background checker from sending duplicates later
+        for announcement in announcements:
+            try:
                 db.mark_announcement_sent(department, announcement['hash'], announcement['title'])
-        else:
-            await update.message.reply_text(
-                f"ℹ️ {department} bölümünde yeni duyuru yok. Toplam {len(announcements)} duyuru kontrol edildi."
-            )
+                logger.info(f"Marked announcement as sent: {announcement['title'][:50]}...")
+            except Exception as e:
+                logger.error(f"Error marking announcement as sent: {e}")
     
     except Exception as e:
         logger.error(f"Error in manual update for user {user.id}: {e}")
@@ -201,42 +211,10 @@ async def handle_department_selection(update: Update, context: ContextTypes.DEFA
         
         logger.info(f"User {user.username} ({user.id}) subscribed to {selected_text}")
         
-        success_message = f"""✅ **Başarıyla kayıt oldunuz!**
-
-📚 **Seçilen Bölüm:** {selected_text}
-
-🔔 **Bilgilendirme:**
-• Artık bu bölümün yeni duyurularını otomatik olarak alacaksınız
-• Duyurular genellikle dakikalar içinde bildirilir
-• İstediğiniz zaman `/update` komutu ile manuel kontrol yapabilirsiniz
-
-**İlk duyuru kontrolü yapılıyor...**"""
+        # Send simple confirmation message
+        success_message = f"✅ Başarıyla kayıt oldunuz! Artık {selected_text} bölümü için yeni duyurular size bildirilecektir. En güncel duyuruları görmek için /update komutunu kullanabilirsiniz."
         
-        await update.message.reply_text(success_message, parse_mode='Markdown')
-        
-        # Trigger initial announcement check
-        try:
-            url = get_department_url(selected_text)
-            if url:
-                announcements = scraper.scrape_announcements(url, max_announcements=2)
-                
-                if announcements:
-                    await update.message.reply_text(
-                        f"✅ Bağlantı başarılı! {selected_text} bölümünden {len(announcements)} duyuru tespit edildi."
-                    )
-                    
-                    # Mark current announcements as sent to avoid spam
-                    for announcement in announcements:
-                        db.mark_announcement_sent(selected_text, announcement['hash'], announcement['title'])
-                else:
-                    await update.message.reply_text(
-                        "⚠️ Bölüm sayfasına bağlanıldı ancak duyuru bulunamadı. Bu normal olabilir."
-                    )
-        except Exception as e:
-            logger.error(f"Error in initial check for {selected_text}: {e}")
-            await update.message.reply_text(
-                "⚠️ İlk kontrol sırasında sorun yaşandı, ancak kayıt başarılı. Sonraki kontroller düzgün çalışacak."
-            )
+        await update.message.reply_text(success_message)
     
     else:
         logger.warning(f"Invalid department selection: '{selected_text}' by user {user.id}")
@@ -259,36 +237,41 @@ Seçtiğiniz: `{selected_text}`
 async def send_announcement_to_user(user_id: int, announcement: dict, department: str, bot) -> bool:
     """Send announcement message to a specific user"""
     try:
-        # Format announcement message
+        # Format announcement message using the helper function
         message = format_announcement_message(announcement, department)
-        
+
         await bot.send_message(
             chat_id=user_id,
             text=message,
             parse_mode='Markdown',
             disable_web_page_preview=False
         )
-        
+        logger.info(f"Successfully sent announcement to user {user_id}")
         return True
-    
     except Exception as e:
+        # Handle specific errors like user blocking the bot in the future if needed
         logger.error(f"Error sending announcement to user {user_id}: {e}")
         return False
 
 
 def format_announcement_message(announcement: dict, department: str) -> str:
-    """Format announcement data into a nice message"""
+    """Format announcement data into a nice message string"""
+    title = announcement.get('title', 'Başlıksız Duyuru')
+    date = announcement.get('date', '')
+    description = announcement.get('description', '')
+    link = announcement.get('link', '')
+
     message = f"🔔 **Yeni Duyuru - {department}**\n\n"
-    message += f"📢 **{announcement['title']}**\n\n"
-    
-    if announcement['date']:
-        message += f"📅 **Tarih:** {announcement['date']}\n\n"
-    
-    if announcement['description']:
-        message += f"📝 **Özet:** {announcement['description']}\n\n"
-    
-    if announcement['link']:
-        message += f"🔗 **Detaylar:** [Duyuruyu Oku]({announcement['link']})"
+    message += f"📢 **{title}**\n\n"
+
+    if date:
+        message += f"📅 **Tarih:** {date}\n\n"
+
+    if description:
+        message += f"📝 **Özet:** {description}\n\n"
+
+    if link:
+        message += f"🔗 **Detaylar:** [Duyuruyu Görüntüle]({link})"
     
     return message
 
